@@ -1,6 +1,6 @@
 {
   "manifest_version": 1,
-  "name": "群友画像",
+  "name": "人物画像",
   "version": "1.0.0",
   "description": "根据聊天记录，为其他聊天用户生成详细的人格画像",
   "author": {
