@@ -13,6 +13,15 @@
   "host_application": {
     "min_version": "0.11.6"
   },
+  "keywords": [
+    "画像",
+    "人格",
+    "分析"
+  ],
+  "categories": [
+    "Entertainment & Interaction",
+    "Data Analysis & Insights"
+  ],
   "default_locale": "CN",
   "locales_path": "_locales"
 }
