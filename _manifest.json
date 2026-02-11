@@ -1,0 +1,18 @@
+{
+  "manifest_version": 1,
+  "name": "群友画像",
+  "version": "1.0.0",
+  "description": "根据聊天记录，为其他聊天用户生成详细的人格画像",
+  "author": {
+    "name": "鲨鱼",
+    "url": "https://github.com/HyperSharkawa"
+  },
+  "homepage_url": "https://github.com/HyperSharkawa/maibot-character-sketch-plugin",
+  "repository_url": "https://github.com/HyperSharkawa/maibot-character-sketch-plugin",
+  "license": "GPLv3",
+  "host_application": {
+    "min_version": "0.11.6"
+  },
+  "default_locale": "CN",
+  "locales_path": "_locales"
+}
