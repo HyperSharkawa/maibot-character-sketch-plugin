@@ -24,17 +24,12 @@ class PortrayalPlugin(BasePlugin):
         # 插件基础配置
         "character_sketch_plugin": "画像插件配置",
         # llm配置
-        "llm_config": "LLM模型配置"
+        "llm_config": "LLM模型配置",
+        # 权限设置
+        "permissions": "权限设置，定义哪些用户可以使用插件功能",
     }  # 配置文件各节描述
     config_schema = {
         "character_sketch_plugin": {
-            # 管理员用户ID列表，能查看所有聊天流的画像
-            "admin_user_ids": ConfigField(
-                type=list,
-                item_type="string",
-                default=["1234567890"],
-                description="管理员用户ID列表，能查看所有聊天流的画像",
-            ),
             # 给llm提供的前面的上下文信息条数 进行生成时会把目标用户的消息之前取这么多条作为上下文
             "context_length": ConfigField(
                 type=int,
@@ -80,7 +75,7 @@ class PortrayalPlugin(BasePlugin):
                 description="生成用户画像时使用的提示词 支持变量：用户昵称 {person_name} 用户QQ昵称 {user_nickname} 消息数量 {message_count} 消息内容 {messages} 上文消息数量 {context_length} 下文消息数量 {context_length_after}",
             ),
         },
-        "llm_config":{
+        "llm_config": {
             # 生成用户画像时使用的LLM模型分组
             "llm_group": ConfigField(
                 type=str,
@@ -107,23 +102,70 @@ class PortrayalPlugin(BasePlugin):
                 default=0.7,
                 description="生成用户画像时使用的模型的温度，仅对手动设置的模型生效",
             ),
-             # 生成用户画像时使用的模型的慢请求阈值 单位秒，超过该时间会输出警告日志
+            # 生成用户画像时使用的模型的慢请求阈值 单位秒，超过该时间会输出警告日志
             "slow_threshold": ConfigField(
                 type=float,
                 default=30,
                 description="生成用户画像时使用的模型的慢请求阈值，单位秒，超过该时间会输出警告日志。仅对手动设置的模型生效",
             ),
-             # 生成用户画像时使用的模型的选择策略 balance（负载均衡）或 random（随机选择）
+            # 生成用户画像时使用的模型的选择策略 balance（负载均衡）或 random（随机选择）
             "selection_strategy": ConfigField(
                 type=str,
                 choices=['balance', 'random'],
                 default="balance",
                 description="生成用户画像时使用的模型的选择策略，仅对手动设置的模型生效 balance（负载均衡）或 random（随机选择）",
             ),
+        },
+        "permissions": {
+            # 管理员用户ID列表，能查看所有聊天流的画像
+            "admin_id_list": ConfigField(
+                type=list,
+                item_type="string",
+                default=["1234567890"],
+                description="管理员用户ID列表，能查看所有聊天流的画像",
+            ),
+            # 权限模式，可选：白名单、黑名单。
+            "permission_mode": ConfigField(
+                type=str,
+                choices=['whitelist', 'blacklist'],
+                default="blacklist",
+                description="权限模式，可选：白名单、黑名单。白名单模式下，只有在列表中的用户可以使用插件功能；黑名单模式下，除了在列表中的用户，其他用户都可以使用插件功能",
+            ),
+            # 用户ID列表，根据权限模式决定是允许还是禁止使用插件功能的用户列表
+            "user_id_list": ConfigField(
+                type=list,
+                item_type="object",
+                item_fields={
+                    "user_id": {
+                        "type": "string",
+                        "label": "用户的QQ号",
+                        "placeholder": "用户的QQ号"
+                    },
+                    "description": {
+                        "type": "string",
+                        "label": "描述",
+                        "placeholder": "可选，对该用户的简短描述，仅便于查看，不会影响功能"
+                    },
+                },
+                default=[{"user_id": "1234567890", "description": "示例用户"}],
+                description="用户ID列表，根据权限模式决定是允许还是禁止使用插件功能的用户列表",
+            ),
         }
     }
 
     def get_plugin_components(self) -> List[Tuple[ComponentInfo, Type]]:
+        permission_mode: str = self.config.get("permissions", {}).get("permission_mode", "blacklist")
+        user_id_list = self.config.get("permissions", {}).get("user_id_list", [])
+        user_id_list = [item["user_id"] for item in user_id_list if "user_id" in item]
+        admin_id_list = self.config.get("permissions", {}).get("admin_id_list", [])
+        if permission_mode not in ["whitelist", "blacklist"]:
+            logger.warning(f"权限模式设置为 {permission_mode}，但这不是一个有效的权限模式。请检查配置并设置为 'whitelist' 或 'blacklist'。默认将使用黑名单模式")
+            permission_mode = "blacklist"
+        if permission_mode == "whitelist" and not user_id_list:
+            logger.warning("权限模式为白名单，但用户ID列表为空，这将导致没有用户可以使用插件功能！")
+        PortrayalCommand.permission_mode = permission_mode
+        PortrayalCommand.user_id_list = user_id_list
+        PortrayalCommand.admin_id_list = admin_id_list
         return [
             (PortrayalCommand.get_command_info(), PortrayalCommand),
         ]

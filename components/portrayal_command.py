@@ -6,7 +6,6 @@ from maim_message import Seg
 from src.common.logger import get_logger
 from src.config.api_ada_configs import TaskConfig
 from src.config.config import global_config
-from src.config.config import model_config as global_model_config
 from src.plugin_system import (
     BaseCommand,
     llm_api,
@@ -33,10 +32,23 @@ class PortrayalCommand(BaseCommand):
     # === 命令设置（必须填写）===
     command_pattern = r"^[/#]画像(\s*(?P<name>\S+))?(\s+(?P<chat_id>\S+))?"
 
+    permission_mode: str = "blacklist"
+    user_id_list: List[str] = []
+    admin_id_list: List[str] = []
+
     async def execute(self) -> Tuple[bool, Optional[str], int]:
-        """执行画像命令"""
-        admin_user_ids = self.get_config("character_sketch_plugin.admin_user_ids", [])
-        is_admin = self.message.message_info.user_info.user_id in admin_user_ids
+        """
+        执行画像命令
+        Returns:
+            Tuple[bool, Optional[str], int]: (是否执行成功, 可选的回复消息, 拦截消息力度，0代表不拦截，1代表仅不触发回复，replyer可见，2代表不触发回复，replyer不可见)
+        """
+        user_id = self.message.message_info.user_info.user_id
+        is_in_list = user_id in PortrayalCommand.user_id_list
+        if PortrayalCommand.permission_mode == "blacklist" and is_in_list:
+            return True, f"用户 {user_id} 没有使用该命令的权限", 1
+        elif PortrayalCommand.permission_mode == "whitelist" and not is_in_list:
+            return True, f"用户 {user_id} 没有使用该命令的权限", 1
+        is_admin = user_id in PortrayalCommand.admin_id_list
         prompt_template = self.get_config("character_sketch_plugin.prompt_template", None)
         llm_list = self.get_config("llm_config.llm_list", [])
 
@@ -45,7 +57,7 @@ class PortrayalCommand(BaseCommand):
             model_config.model_list = llm_list
             model_config.max_tokens = self.get_config("llm_config.max_tokens", 20000)
             model_config.temperature = self.get_config("llm_config.temperature", 0.7)
-            model_config.slow_threshold = self.get_config("llm_config.slow_threshold",30)
+            model_config.slow_threshold = self.get_config("llm_config.slow_threshold", 30)
             model_config.selection_strategy = self.get_config("llm_config.selection_strategy", "balance")
         else:
             llm_group = self.get_config("llm_config.llm_group", "utils")
@@ -53,25 +65,25 @@ class PortrayalCommand(BaseCommand):
             model_config = models.get(llm_group)
             if not model_config:
                 logger.error(f"未找到可用的 {llm_group} 模型配置")
-                return True, f"未找到可用的 {llm_group} 模型配置", True
+                return False, f"未找到可用的 {llm_group} 模型配置", 1
         if not prompt_template:
             logger.error("画像提示词为空")
-            return True, "画像提示词为空", True
+            return False, "画像提示词为空", 1
         target_user_id, person_name, nickname, stream_id = await self.get_portrayal_target()
         logger.debug(f"画像对象用户ID: {target_user_id}, 昵称: {nickname}, 聊天流ID: {stream_id}")
         if not target_user_id:
             await self.send_text("未能确定画像对象的用户ID，请检查命令格式或@的用户信息。")
-            return True, f"", True
+            return True, f"", 1
 
         start_time = time.time() - 24 * 3600 * 30
         end_time = time.time()
         if not stream_id and not is_admin:
             # 如果没有指定聊天流ID，则将会搜索所有聊天流中该用户的消息 该功能仅限管理员使用
             await self.send_text("你没有使用该参数的权限")
-            return True, f"", True
+            return True, f"", 1
         if stream_id != self.message.chat_stream.stream_id and not is_admin:
             await self.send_text("你没有使用该参数的权限")
-            return True, f"", True
+            return True, f"", 1
         retrieval_message_count = self.get_config("character_sketch_plugin.retrieval_message_count",
                                                   50000)
         context_length = self.get_config("character_sketch_plugin.context_length", 10)
@@ -104,10 +116,10 @@ class PortrayalCommand(BaseCommand):
         )
         if not messages:
             await self.send_text(f"未找到用户 {person_name} 的消息记录，无法生成画像。")
-            return True, f"", True
+            return True, f"", 1
         if not lines:
             await self.send_text(f"未找到有效的消息内容，无法生成画像。")
-            return True, f"", True
+            return True, f"", 1
 
         await self.send_text(
             f"使用了 {len(lines)} 条历史消息，其中目标用户 {primary_count} 条，上下文 {other_count} 条。正在生成画像，请稍候...")
@@ -123,7 +135,7 @@ class PortrayalCommand(BaseCommand):
         success, response, _, _ = await llm_api.generate_with_model(prompt, model_config=model_config)
         if not success:
             logger.error(f"模型响应失败: {response}")
-            return True, f"", True
+            return False, f"", 1
 
         message_body: Tuple[str, str] = ("text", response)
         message: Tuple[str, str, List[Tuple[str, str]]] = (
@@ -131,7 +143,7 @@ class PortrayalCommand(BaseCommand):
         )
         await self.send_forward([message])
 
-        return True, f"", True
+        return True, f"", 1
 
     async def get_portrayal_target(self) -> Tuple[str, str, str, str]:
         """
