@@ -11,7 +11,7 @@
   "repository_url": "https://github.com/HyperSharkawa/maibot-character-sketch-plugin",
   "license": "GPLv3",
   "host_application": {
-    "min_version": "0.11.6"
+    "min_version": "0.12.0"
   },
   "keywords": [
     "画像",
